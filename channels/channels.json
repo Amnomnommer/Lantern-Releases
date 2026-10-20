@@ -1,0 +1,18 @@
+{
+  "format_version": 1,
+  "repository": "Amnomnommer/Lantern-Releases",
+  "mobile": {
+    "status": "baseline_publication_pending",
+    "tag_pattern": "mobile-debug-vN",
+    "asset_name": "Lantern-mobile-debug.apk",
+    "application_id": "org.projectlantern.mobile.debug",
+    "requires_android_install_confirmation": true,
+    "requires_same_signing_certificate": true
+  },
+  "workstation": {
+    "status": "reserved_inactive",
+    "tag_pattern": "workstation-vN",
+    "automatic_installation_enabled": false,
+    "authority_granted": false
+  }
+}

@@ -1,0 +1,69 @@
+name: Verify and publish signed mobile release
+on:
+  push:
+    branches: [main]
+    paths: ["incoming/**", "scripts/**", "channels/**", ".github/workflows/mobile-release.yml"]
+  pull_request:
+    paths: ["scripts/**", "channels/**", ".github/workflows/mobile-release.yml"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Mobile version code; empty selects the newest incoming candidate"
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: mobile-release-publication
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      has_release: ${{ steps.verify.outputs.has_release }}
+      version: ${{ steps.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Test release metadata boundaries
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+      - name: Select official Android verification tools
+        run: |
+          echo "JAVA_HOME=${JAVA_HOME_17_X64}" >> "$GITHUB_ENV"
+          echo "${JAVA_HOME_17_X64}/bin" >> "$GITHUB_PATH"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0"
+      - name: Verify exact incoming bytes, identity and manifest
+        id: verify
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: python3 scripts/verify_mobile.py --version "$REQUESTED_VERSION"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: steps.verify.outputs.has_release == 'true'
+        with:
+          name: verified-mobile-${{ steps.verify.outputs.version }}
+          path: validation/
+          retention-days: 30
+          if-no-files-found: error
+  publish:
+    needs: verify
+    if: needs.verify.outputs.has_release == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-mobile-${{ needs.verify.outputs.version }}
+          path: validation/
+      - name: Publish only the previously verified signed candidate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.verify.outputs.version }}
+        run: python3 scripts/publish_mobile.py --version "$RELEASE_VERSION"
